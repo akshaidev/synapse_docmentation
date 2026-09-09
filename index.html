@@ -502,7 +502,8 @@
         action has a named responsible party attached to it, even if that name cannot be cryptographically verified.
     </p>
     <p>The backend enforces its presence on lien actions via the <span class="inline-code">LienActionRequest</span>
-        schema — an empty or missing <span class="inline-code">operator_id</span> returns HTTP 422. On the resolve
+        schema — a missing or blank <span class="inline-code">operator_id</span> returns HTTP 422 (<span class="inline-code">min_length=1</span>
+        on both <span class="inline-code">LienActionRequest</span> and <span class="inline-code">ResolveIncidentRequest</span>). On the resolve
         endpoint, the same check applies: a resolution without an identified operator is rejected.</p>
 
     <h3>6.2 INITIATE and REVOKE</h3>
@@ -595,6 +596,12 @@
                 resolved</td>
         </tr>
     </table>
+    <p>These two states are not independent tracks for long-lived cases: a <span class="inline-code">TACTICAL_TIMEOUT</span>
+        case is not exempt from the 30-day check. The sweeper's 30-day condition fires on any incident not already in
+        <span class="inline-code">["RESOLVED", "ADMINISTRATIVELY_CLOSED"]</span> — which includes timed-out cases.
+        A case that transitions to <span class="inline-code">TACTICAL_TIMEOUT</span> at 6 hours and is never resolved
+        will transition further to <span class="inline-code">ADMINISTRATIVELY_CLOSED</span> at 30 days.
+    </p>
     <div class="callout limit">
         <span class="callout-label">Why "not resolved" matters here</span>
         <span class="inline-code">resolved = True</span> is reserved exclusively for a human calling <span
@@ -707,6 +714,16 @@
                 <li><strong>Logs Fund Flow Transaction:</strong> appends a discrete <span class="inline-code">ATM_CASH_WITHDRAWAL</span> hop to the incident's transaction ledger (<span class="inline-code">payload_snapshot.transactions</span>), rendering in the Transaction Flow accordion with dedicated cash-out badges.</li>
             </ul>
             The main dashboard polls every 5 seconds and silently refreshes the map, location telemetry, and transaction flow without resetting active countdowns.
+            <p><strong>Score Freeze — Deliberate Design:</strong> pushing a live ATM withdrawal does
+            <em>not</em> recalculate <span class="inline-code">composite_confidence</span>,
+            <span class="inline-code">mps_score</span>, <span class="inline-code">urgency_score</span>,
+            or the confirmed ATM's <span class="inline-code">risk_score</span>. This is intentional:
+            once <span class="inline-code">mule_location_method == ATM_WITHDRAWAL_CONFIRMED</span> is
+            present, a physical cash-out event has been observed — the operator has direct, unambiguous
+            evidence to act on that does not require a re-derived probabilistic confidence number on top
+            of it. The confidence score displayed on a confirmed incident reflects the original Stage 1–3
+            probabilistic estimate; operators should treat the confirmed location method as the
+            authoritative signal, not the percentage. See Assumptions.md for the full rationale.</p>
         </li>
         <li><strong>Cross-Dashboard Navigation:</strong> a top navbar link (<span class="inline-code">🗺 Tactical Map &amp; Dashboard ↗</span>) and a direct action button (<span class="inline-code">🎯 View on Tactical Map →</span>) on the withdrawal confirmation card enable seamless one-click deep-linking into the Tactical Dashboard with the active incident pre-loaded in View B.</li>
         <li><strong>Case Resolution:</strong> a "Mark Resolved" action surfaced next to the active incident selector
